@@ -10,22 +10,34 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up(): void
-{
-    Schema::create('tasks', function (Blueprint $table) {
-        $table->id();
-        $table->foreignId('user_id')->constrained()->onDelete('cascade');
-        $table->string('title');                          // judul tugas
-        $table->text('description')->nullable();          // deskripsi (boleh kosong)
-        $table->enum('source', ['manual', 'moodle', 'gmail', 'calendar'])->default('manual');
-        $table->string('source_id')->nullable();          // ID dari platform asal
-        $table->enum('priority', ['urgent', 'high', 'medium', 'low'])->default('medium');
-        $table->enum('status', ['pending', 'in_progress', 'done'])->default('pending');
-        $table->datetime('deadline')->nullable();          // deadline tugas
-        $table->string('course_name')->nullable();         // nama mata kuliah
-        $table->string('url')->nullable();                 // link tugas (Moodle, dll)
-        $table->timestamps();
-    });
-}
+    {
+        Schema::create('tasks', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            
+            // Info Dasar
+            $table->string('title');                          
+            $table->text('description')->nullable(); // Sudah menggunakan text, aman dari error limit!
+            
+            // Source (Sudah ada 'classroom')
+            $table->enum('source', ['manual', 'moodle', 'gmail', 'calendar', 'classroom'])->default('manual');
+            $table->string('source_id')->nullable();          
+            
+            // Status & Priority
+            $table->enum('priority', ['urgent', 'high', 'medium', 'low'])->default('medium');
+            $table->enum('status', ['pending', 'in_progress', 'done'])->default('pending');
+            $table->datetime('deadline')->nullable();          
+            $table->string('course_name')->nullable();         
+            
+            // Link & Files (Digabung ke sini)
+            $table->string('url')->nullable();                 
+            $table->string('file_path')->nullable(); // path file di storage/app/public/task-files/
+            $table->string('file_name')->nullable(); // nama asli file
+            $table->string('file_type')->nullable(); // extension file (pdf, docx, dll)
+            
+            $table->timestamps();
+        });
+    }
 
     /**
      * Reverse the migrations.
