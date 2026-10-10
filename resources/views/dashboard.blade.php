@@ -239,7 +239,7 @@
             displayEventTime: false,
             eventDisplay: 'block',
             dayMaxEvents: 2,
-            events: {!! json_encode(
+            events: {{ Illuminate\Support\Js::from(
                 collect($tasks ?? [])
                     ->filter(fn($t) => $t->deadline)
                     ->map(fn($t) => [
@@ -252,7 +252,7 @@
                         'allDay'          => true,
                     ])
                     ->values()
-            ) !!},
+            ) }},
             eventClick: function(info) {
                 info.jsEvent.preventDefault();
                 if (info.event.url) window.location.href = info.event.url;
@@ -272,7 +272,8 @@
                 document.getElementById('modalSubject').innerText = data.subject;
                 document.getElementById('modalFrom').innerText    = "Dari: " + data.from;
                 document.getElementById('modalDate').innerText    = data.date;
-                document.getElementById('modalBody').innerHTML    = data.body;
+                document.getElementById('modalBody').textContent = data.body_text || '';
+                document.getElementById('modalBody').classList.add('whitespace-pre-wrap');
             })
             .catch(() => {
                 document.getElementById('modalBody').innerText = "Gagal mengambil isi email.";

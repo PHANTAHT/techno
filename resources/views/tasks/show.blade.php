@@ -65,7 +65,7 @@
             <span class="w-1.5 h-4 bg-blue-500 rounded-full"></span> Deskripsi Tugas
         </h3>
         <div class="prose max-w-none text-gray-700 bg-gray-50/30 p-6 rounded-2xl border border-gray-100 italic leading-relaxed">
-            {!! $task->description ?? 'Tidak ada deskripsi tambahan.' !!}
+            {!! nl2br(e(strip_tags($task->description ?? 'Tidak ada deskripsi tambahan.'))) !!}
         </div>
     </div>
 
@@ -172,13 +172,13 @@
 {{-- ══════════════════════════════════════════════════════════ --}}
 <script>
 // Konteks tugas untuk chat bubble
-window.taskContext = `Judul Tugas: {{ addslashes($task->title) }}
-Mata Kuliah: {{ addslashes($task->course_name ?? 'Tidak diketahui') }}
-Sumber: {{ strtoupper($task->source ?? 'Manual') }}
-Deadline: {{ $task->deadline ? $task->deadline->format('d F Y, H:i') : 'Tidak ada deadline' }}
-Status: {{ $isOverdue ? 'OVERDUE' : 'Active' }}
-Deskripsi: {{ addslashes(strip_tags($task->description ?? 'Tidak ada deskripsi')) }}
-File Lampiran: {{ $task->file_name ?? 'Tidak ada' }}`;
+@php
+    $taskChatContext = "Judul Tugas: {$task->title}\nMata Kuliah: " . ($task->course_name ?? 'Tidak diketahui')
+        . "\nSumber: {$task->source}\nDeadline: " . ($task->deadline?->format('d F Y, H:i') ?? 'Tidak ada deadline')
+        . "\nStatus: {$task->status}\nDeskripsi: " . strip_tags($task->description ?? '')
+        . "\nFile Lampiran: " . ($task->file_name ?? 'Tidak ada');
+@endphp
+window.taskContext = {{ Illuminate\Support\Js::from($taskChatContext) }};
 
 // ── AI Jelaskan Tugas → buka chat bubble ──────────────────────
 function explainTask() {

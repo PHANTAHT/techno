@@ -3,10 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Task;
-use App\Models\MoodleConfig; 
+use App\Services\MoodleHttp;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Validator;
 
 class MoodleController extends Controller
 {
@@ -17,7 +18,7 @@ class MoodleController extends Controller
     public function setup(Request $request)
     {
         $request->validate([
-            'moodle_url'      => 'required|url',
+            'moodle_url' => 'required|url',
             'moodle_username' => 'required',
             'moodle_password' => 'required',
         ]);
@@ -26,12 +27,16 @@ class MoodleController extends Controller
         $baseUrl = rtrim($request->moodle_url, '/');
 
         // Request Token ke Moodle Lenteraku
-        $response = Http::get($baseUrl . '/login/token.php', [
-            'username' => $request->moodle_username,
-            'password' => $request->moodle_password,
-            'service'  => 'moodle_mobile_app'
-        ]);
+        try {
+            $response = app(MoodleHttp::class)->client($baseUrl.'/login/token.php')->asForm()->post($baseUrl.'/login/token.php', [
+                'username' => $request->moodle_username,
+                'password' => $request->moodle_password,
+                'service' => 'moodle_mobile_app',
+            ]);
 
+        } catch (\Exception $e) {
+            return back()->with('error', 'Tidak dapat menghubungi server Moodle. Periksa URL dan koneksi.');
+        }
         $data = $response->json();
 
         // Jika Moodle menolak login (password/username salah)
@@ -45,7 +50,7 @@ class MoodleController extends Controller
                 ['user_id' => Auth::id()],
                 [
                     'moodle_url' => $baseUrl,
-                    'token'      => $data['token'],
+                    'token' => $data['token'],
                 ]
             );
 
@@ -66,24 +71,40 @@ class MoodleController extends Controller
 
         $moodleConfig = Auth::user()->moodleConfig;
 
-        if (!$moodleConfig || !$moodleConfig->moodle_url || !$moodleConfig->token) {
+        if (! $moodleConfig || ! $moodleConfig->moodle_url || ! $moodleConfig->token) {
             return redirect('/settings')->with('error', 'Kamu belum menghubungkan Moodle.');
         }
 
         $moodleUrl = $moodleConfig->moodle_url;
-        $token     = $moodleConfig->token;
+        $token = $moodleConfig->token;
 
-        $response = Http::get("{$moodleUrl}/webservice/rest/server.php", [
-            'wstoken'            => $token,
-            'wsfunction'         => 'mod_assign_get_assignments',
-            'moodlewsrestformat' => 'json',
-        ]);
+        try {
+            $response = app(MoodleHttp::class)->client("{$moodleUrl}/webservice/rest/server.php")->get("{$moodleUrl}/webservice/rest/server.php", [
+                'wstoken' => $token,
+                'wsfunction' => 'mod_assign_get_assignments',
+                'moodlewsrestformat' => 'json',
+            ]);
 
+        } catch (\Exception $e) {
+            return back()->with('error', 'Sinkronisasi Moodle gagal; tugas lama tetap disimpan.');
+        }
         $data = $response->json();
-        
+
         if (isset($data['exception'])) {
-            $moodleConfig->delete(); 
+            // Keep configuration on transient permission/server errors.
             return redirect('/settings')->with('error', 'Sesi Moodle berakhir. Silakan hubungkan ulang.');
+        }
+
+        if (! $response->successful() || ! is_array($data['courses'] ?? null) || Validator::make($data, [
+            'courses.*.id' => 'required',
+            'courses.*.fullname' => 'required|string',
+            'courses.*.assignments' => 'present|array',
+            'courses.*.assignments.*.id' => 'required',
+            'courses.*.assignments.*.name' => 'required|string',
+            'courses.*.assignments.*.duedate' => 'required|integer|min:0',
+            'courses.*.assignments.*.cmid' => 'required',
+        ])->fails()) {
+            return back()->with('error', 'Respons Moodle gagal atau tidak lengkap; tugas lama tetap disimpan.');
         }
 
         $count = 0;
@@ -91,7 +112,7 @@ class MoodleController extends Controller
 
         foreach ($data['courses'] ?? [] as $course) {
             foreach ($course['assignments'] ?? [] as $assignment) {
-                
+
                 $assignId = $assignment['id'];
                 $dueDate = $assignment['duedate'];
 
@@ -101,27 +122,28 @@ class MoodleController extends Controller
                 }
 
                 $syncedTaskIds[] = (string) $assignId;
-                $taskStatus = 'pending';
+                $taskStatus = Task::where('user_id', Auth::id())->where('source', 'moodle')
+                    ->where('source_id', (string) $assignId)->value('status') ?? 'pending';
 
                 // --- CEK STATUS PENGUMPULAN ---
                 // Menggunakan try-catch dan usleep agar tidak di-banned server kampus
                 try {
                     // Beri jeda 0.2 detik (200.000 microsecond) biar server kampus nggak mengira kita nge-spam
-                    usleep(200000); 
+                    usleep(200000);
 
                     // Tambahkan timeout agar kalau server kampus lemot, gak bikin nyangkut kelamaan
-                    $statusResponse = Http::timeout(10)->get("{$moodleUrl}/webservice/rest/server.php", [
-                        'wstoken'            => $token,
-                        'wsfunction'         => 'mod_assign_get_submission_status',
+                    $statusResponse = app(MoodleHttp::class)->client("{$moodleUrl}/webservice/rest/server.php")->get("{$moodleUrl}/webservice/rest/server.php", [
+                        'wstoken' => $token,
+                        'wsfunction' => 'mod_assign_get_submission_status',
                         'moodlewsrestformat' => 'json',
-                        'assignid'           => $assignId,
+                        'assignid' => $assignId,
                     ]);
 
                     if ($statusResponse->successful()) {
                         $statusData = $statusResponse->json();
-                        $moodleStatus = $statusData['lastattempt']['submission']['status'] ?? 'new';
-                        if ($moodleStatus === 'submitted') {
-                            $taskStatus = 'done';
+                        $moodleStatus = $statusData['lastattempt']['submission']['status'] ?? null;
+                        if ($moodleStatus !== null) {
+                            $taskStatus = $moodleStatus === 'submitted' ? 'done' : 'pending';
                         }
                     }
                 } catch (\Exception $e) {
@@ -131,27 +153,27 @@ class MoodleController extends Controller
 
                 // --- CEK FILE ---
                 $fileUrl = null;
-                if (!empty($assignment['introattachments']) && count($assignment['introattachments']) > 0) {
+                if (! empty($assignment['introattachments']) && count($assignment['introattachments']) > 0) {
                     $attachment = $assignment['introattachments'][0];
-                    $fileUrl = $attachment['fileurl'] . '?token=' . $token;
+                    $fileUrl = $attachment['fileurl'].(str_contains($attachment['fileurl'], '?') ? '&' : '?').'token='.rawurlencode($token);
                 }
 
                 // --- SIMPAN KE DATABASE ---
                 Task::updateOrCreate(
                     [
-                        'user_id'   => Auth::id(),
-                        'source'    => 'moodle',
+                        'user_id' => Auth::id(),
+                        'source' => 'moodle',
                         'source_id' => (string) $assignId,
                     ],
                     [
-                        'title'       => $assignment['name'],
+                        'title' => $assignment['name'],
                         'description' => strip_tags($assignment['intro'] ?? ''),
-                        'deadline'    => $dueDate ? date('Y-m-d H:i:s', $dueDate) : null,
+                        'deadline' => $dueDate ? Carbon::createFromTimestamp($dueDate)->setTimezone(config('app.timezone')) : null,
                         'course_name' => $course['fullname'],
-                        'url'         => "{$moodleUrl}/mod/assign/view.php?id={$assignment['cmid']}",
-                        'file_url'    => $fileUrl,
-                        'priority'    => 'medium',
-                        'status'      => $taskStatus,
+                        'url' => "{$moodleUrl}/mod/assign/view.php?id={$assignment['cmid']}",
+                        'file_url' => $fileUrl,
+                        'priority' => 'medium',
+                        'status' => $taskStatus,
                     ]
                 );
                 $count++;

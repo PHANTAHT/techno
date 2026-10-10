@@ -14,41 +14,58 @@
     <div id="full-calendar"></div>
 </div>
 
+@php
+    $calendarEvents = [];
+    foreach($tasks ?? [] as $task) {
+        if($task->deadline) {
+            // Amankan parsing deadline ke objek Carbon
+            $deadline = \Carbon\Carbon::parse($task->deadline);
+            
+            // Tentukan warna berdasarkan status dan tanggal
+            if ($task->status === 'done') {
+                $bgColor = '#10b981'; // Hijau jika sudah selesai
+            } else {
+                $bgColor = $deadline->isPast() ? '#ef4444' : '#3b82f6'; // Merah jika telat, Biru jika pending
+            }
+
+            $calendarEvents[] = [
+                'title'           => html_entity_decode($task->title),
+                'start'           => $deadline->format("Y-m-d\TH:i:s"),
+                'url'             => route("tasks.show", $task->id),
+                'backgroundColor' => $bgColor,
+                'borderColor'     => 'transparent',
+                'textColor'       => '#ffffff',
+                'allDay'          => true 
+            ];
+        }
+    }
+@endphp
+
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js'></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('full-calendar');
         
+        // Ambil data JSON dari PHP yang sudah di-encode dengan aman
+        var eventsData = {{ Illuminate\Support\Js::from($calendarEvents) }};
+        
         var calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
-            height: 750, // Lebih tinggi karena ini halaman khusus kalender
+            height: 750, 
             headerToolbar: {
                 left: 'prev,next today',
                 center: 'title',
-                right: '' // Tetap hanya menampilkan view bulan (Month)
+                right: '' 
             },
             themeSystem: 'standard',
             
-            // Konfigurasi Kerapian
-            displayEventTime: false,  // Sembunyikan jam
-            eventDisplay: 'block',    // Semua tugas berbentuk kotak warna
-            dayMaxEvents: 4,          // Maksimal 4 baris per hari karena layarnya lebih besar
+            displayEventTime: false,  
+            eventDisplay: 'block',    
+            dayMaxEvents: 4,          
 
-            events: [
-                @foreach($tasks ?? [] as $task)
-                    @if($task->deadline)
-                        {
-                            title: '{!! addslashes(html_entity_decode($task->title)) !!}',
-                            start: '{{ \Carbon\Carbon::parse($task->deadline)->format("Y-m-d\TH:i:s") }}',
-                            url: '{{ route("tasks.show", $task->id) }}',
-                            backgroundColor: '{{ $task->status === "done" ? "#10b981" : ($task->deadline->isPast() ? "#ef4444" : "#3b82f6") }}',
-                            borderColor: 'transparent',
-                            textColor: '#ffffff',
-                            allDay: true 
-                        },
-                    @endif
-                @endforeach
-            ],
+            // Masukkan data ke sini
+            events: eventsData, 
+            
             eventClick: function(info) {
                 info.jsEvent.preventDefault();
                 if (info.event.url) {
@@ -71,7 +88,7 @@
         font-weight: 500 !important;
         border-radius: 0.375rem !important;
         box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-        padding: 0.5rem 1rem !important; /* Tombol sedikit diperbesar */
+        padding: 0.5rem 1rem !important; 
     }
     .fc .fc-button-primary:hover {
         background-color: #e5e7eb !important;
@@ -80,7 +97,7 @@
         border-color: #e5e7eb;
     }
     .fc .fc-toolbar-title {
-        font-size: 1.5rem !important; /* Judul bulan lebih besar */
+        font-size: 1.5rem !important; 
         font-weight: 700 !important;
         color: #1f2937;
     }
@@ -98,7 +115,7 @@
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
-        font-size: 0.8rem !important; /* Font sedikit diperbesar */
+        font-size: 0.8rem !important; 
         font-weight: 600 !important;
         display: block !important;
     }

@@ -30,10 +30,15 @@ return new class extends Migration
             $table->string('course_name')->nullable();         
             
             // Link & Files (Digabung ke sini)
+           // ... kode lainnya ...
+
+            // Link & Files
             $table->string('url')->nullable();                 
-            $table->string('file_path')->nullable(); // path file di storage/app/public/task-files/
-            $table->string('file_name')->nullable(); // nama asli file
-            $table->string('file_type')->nullable(); // extension file (pdf, docx, dll)
+            $table->string('file_url')->nullable();
+            $table->string('file_path')->nullable(); 
+            $table->string('file_name')->nullable(); 
+            $table->string('file_type')->nullable(); 
+
             
             $table->timestamps();
         });

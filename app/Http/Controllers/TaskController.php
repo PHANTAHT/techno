@@ -12,17 +12,17 @@ class TaskController extends Controller
     public function index()
     {
         $tasks = Task::where('user_id', Auth::id())
-                     ->where('status', '!=', 'done')
+            ->where('status', '!=', 'done')
                      // Tampilkan task yang:
                      // - Tidak ada deadline, ATAU
                      // - Deadlinenya belum lewat, ATAU
                      // - Baru lewat max 7 hari (masih relevan)
-                     ->where(function ($q) {
-                         $q->whereNull('deadline')
-                           ->orWhere('deadline', '>=', now()->subDays(60));
-                     })
-                     ->orderBy('deadline', 'asc')
-                     ->get();
+            ->where(function ($q) {
+                $q->whereNull('deadline')
+                    ->orWhere('deadline', '>=', now()->subDays(60));
+            })
+            ->orderBy('deadline', 'asc')
+            ->get();
 
         return view('tasks.index', compact('tasks'));
     }
@@ -35,21 +35,21 @@ class TaskController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'title'       => 'required|string|max:255',
+            'title' => 'required|string|max:255',
             'course_name' => 'nullable|string|max:255',
-            'deadline'    => 'nullable|date',
+            'deadline' => 'nullable|date',
             'description' => 'nullable|string',
-            'attachment'  => 'nullable|file|max:10240|mimes:pdf,doc,docx,png,jpg,jpeg,txt,csv',
+            'attachment' => 'nullable|file|max:10240|mimes:pdf,doc,docx,png,jpg,jpeg,txt,csv',
         ]);
 
         $validated['user_id'] = auth()->id();
-        $validated['source']  = 'manual';
-        $validated['status']  = 'pending';
-        $validated['priority']= 'medium';
+        $validated['source'] = 'manual';
+        $validated['status'] = 'pending';
+        $validated['priority'] = 'medium';
 
         if ($request->hasFile('attachment')) {
             $file = $request->file('attachment');
-            $path = $file->store("task-files/" . auth()->id(), 'public');
+            $path = $file->store('task-files/'.auth()->id(), 'public');
 
             $validated['file_path'] = $path;
             $validated['file_name'] = $file->getClientOriginalName();
@@ -64,42 +64,52 @@ class TaskController extends Controller
 
     public function show(Task $task)
     {
-        if ($task->user_id !== auth()->id()) abort(403, 'Akses ditolak');
+        if ($task->user_id !== auth()->id()) {
+            abort(403, 'Akses ditolak');
+        }
+
         return view('tasks.show', compact('task'));
     }
 
     public function edit(Task $task)
     {
-        if ($task->user_id !== auth()->id()) abort(403);
-        return view('tasks.edit', compact('task'));
+        if ($task->user_id !== auth()->id()) {
+            abort(403);
+        }
+
+        return view('tasks.create', compact('task'));
     }
 
     public function update(Request $request, Task $task)
     {
-        if ($task->user_id !== auth()->id()) abort(403);
+        if ($task->user_id !== auth()->id()) {
+            abort(403);
+        }
 
         $validated = $request->validate([
-            'title'       => 'required|string|max:255',
+            'title' => 'required|string|max:255',
             'course_name' => 'nullable|string|max:255',
-            'deadline'    => 'nullable|date',
+            'deadline' => 'nullable|date',
             'description' => 'nullable|string',
-            'priority'    => 'nullable|in:urgent,high,medium,low',
-            'status'      => 'nullable|in:pending,in_progress,done',
-            'attachment'  => 'nullable|file|max:10240|mimes:pdf,doc,docx,png,jpg,jpeg,txt,csv',
+            'priority' => 'nullable|in:urgent,high,medium,low',
+            'status' => 'nullable|in:pending,in_progress,done',
+            'attachment' => 'nullable|file|max:10240|mimes:pdf,doc,docx,png,jpg,jpeg,txt,csv',
         ]);
 
         if ($request->hasFile('attachment')) {
-            if ($task->file_path) Storage::disk('public')->delete($task->file_path);
+            if ($task->file_path) {
+                Storage::disk('public')->delete($task->file_path);
+            }
 
             $file = $request->file('attachment');
-            $path = $file->store("task-files/" . auth()->id(), 'public');
+            $path = $file->store('task-files/'.auth()->id(), 'public');
 
             $validated['file_path'] = $path;
             $validated['file_name'] = $file->getClientOriginalName();
             $validated['file_type'] = strtolower($file->getClientOriginalExtension());
         }
 
-        if ($request->boolean('remove_file') && $task->file_path) {
+        if (! $request->hasFile('attachment') && $request->boolean('remove_file') && $task->file_path) {
             Storage::disk('public')->delete($task->file_path);
             $validated['file_path'] = null;
             $validated['file_name'] = null;
@@ -114,9 +124,13 @@ class TaskController extends Controller
 
     public function destroy(Task $task)
     {
-        if ($task->user_id !== auth()->id()) abort(403);
+        if ($task->user_id !== auth()->id()) {
+            abort(403);
+        }
 
-        if ($task->file_path) Storage::disk('public')->delete($task->file_path);
+        if ($task->file_path) {
+            Storage::disk('public')->delete($task->file_path);
+        }
         $task->delete();
 
         return redirect('/tasks')->with('success', 'Tugas dihapus!');
@@ -124,8 +138,11 @@ class TaskController extends Controller
 
     public function complete(Task $task)
     {
-        if ($task->user_id !== auth()->id()) abort(403);
+        if ($task->user_id !== auth()->id()) {
+            abort(403);
+        }
         $task->update(['status' => 'done']);
+
         return back()->with('success', 'Tugas berhasil ditandai selesai!');
     }
 }

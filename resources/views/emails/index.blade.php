@@ -142,7 +142,9 @@ function loadEmail(id, element) {
             document.getElementById('viewSubject').innerText = data.subject;
             document.getElementById('viewFrom').innerText    = data.from;
             document.getElementById('viewDate').innerText    = data.date;
-            document.getElementById('viewBody').innerHTML    = `<div class="prose prose-sm max-w-none">${data.body}</div>`;
+            const emailBody = document.getElementById('viewBody');
+            emailBody.classList.add('whitespace-pre-wrap');
+            emailBody.textContent = data.body_text || '';
 
             // ============================================================
             // Update window.emailContext supaya chat bubble tahu email ini
@@ -186,7 +188,7 @@ function refreshEmailQuickActions() {
         btn.onclick   = () => {
             document.getElementById('chatInput').value = a.msg;
             // Buka chat kalau belum terbuka
-            const panel = document.getElementById('chatPanel');
+            const panel = document.getElementById('chatContainer');
             if (panel.classList.contains('hidden')) toggleChat();
             sendChat();
         };
